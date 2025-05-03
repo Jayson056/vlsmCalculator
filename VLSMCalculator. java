@@ -1,0 +1,133 @@
+package vlsmCALCULATOR;
+
+import java.net.*;
+import java.util.*;
+
+public class VLSMCalculator {
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.print("Enter Base IP (CIDR format, e.g., 192.1.1.1/24): ");
+        String ipCidr = scanner.nextLine().trim();
+
+        System.out.print("Enter host requirements (comma-separated, e.g., 50,80,10): ");
+        String hostRequirements = scanner.nextLine().trim();
+
+        calculateVLSM(ipCidr, hostRequirements);
+    }
+
+    private static void calculateVLSM(String ipCidr, String hostRequirements) {
+        try {
+            String[] parts = ipCidr.split("/");
+            String baseIp = parts[0];
+            int originalCidr = Integer.parseInt(parts[1]);
+
+            String[] hostStrings = hostRequirements.split(",");
+            List<Integer> hosts = new ArrayList<>();
+
+            for (String h : hostStrings) {
+                hosts.add(Integer.parseInt(h.trim()));
+            }
+
+            hosts.sort(Collections.reverseOrder());
+
+            long ip = ipToLong(InetAddress.getByName(baseIp));
+            List<SubnetDevice> devices = new ArrayList<>();
+
+            System.out.println("\n=== VLSM Allocation Result ===");
+
+            for (int i = 0; i < hosts.size(); i++) {
+                int requiredHosts = hosts.get(i);
+                int bits = (int) Math.ceil(Math.log(requiredHosts + 2) / Math.log(2));
+                int subnetMask = 32 - bits;
+                long blockSize = (long) Math.pow(2, bits);
+
+                String subnetIp = longToIp(ip);
+                String firstIp = longToIp(ip + 1);
+                String lastIp = longToIp(ip + blockSize - 2);
+                String mask = cidrToMask(subnetMask);
+
+                // Mobile/PC-friendly line-by-line output
+                System.out.println("\nSubnet " + (i + 1));
+                System.out.println("Network:     " + subnetIp + "/" + subnetMask);
+                System.out.println("Subnet Mask: " + mask);
+                System.out.println("Hosts:       " + requiredHosts);
+                System.out.println("First IP:    " + firstIp);
+                System.out.println("Last IP:     " + lastIp);
+
+                devices.add(new SubnetDevice(i + 1, subnetIp, requiredHosts, firstIp, lastIp));
+                ip += blockSize;
+            }
+
+            // Print the ASCII network diagram
+            printNetworkDiagram(devices);
+
+        } catch (Exception ex) {
+            System.out.println("Error: " + ex.getMessage());
+        }
+    }
+
+    private static void printNetworkDiagram(List<SubnetDevice> devices) {
+        System.out.println("\n=== Network Diagram ===");
+
+        System.out.println("        [Router]");
+        for (SubnetDevice device : devices) {
+            System.out.println("           |");
+            System.out.println("         [Switch " + device.index + "]");
+            System.out.println("           |");
+            System.out.println("     +-----+-----+");
+            System.out.println("     |           |");
+            System.out.println("  [PC1]       [PC2]");
+            System.out.println("               |");
+            System.out.println("             [PC3]");
+            System.out.println("               |");
+            System.out.println("     Subnet: " + device.subnetIp);
+            System.out.println("     Hosts:  " + device.hostCount);
+            System.out.println("     Range:  " + device.firstIp + " - " + device.lastIp);
+            System.out.println();
+        }
+    }
+
+    private static long ipToLong(InetAddress ip) {
+        byte[] octets = ip.getAddress();
+        long result = 0;
+        for (byte octet : octets) {
+            result = result << 8 | (octet & 0xff);
+        }
+        return result;
+    }
+
+    private static String longToIp(long ip) {
+        return String.format("%d.%d.%d.%d",
+                (ip >> 24) & 0xff,
+                (ip >> 16) & 0xff,
+                (ip >> 8) & 0xff,
+                ip & 0xff);
+    }
+
+    private static String cidrToMask(int cidr) {
+        int mask = 0xffffffff << (32 - cidr);
+        int octet1 = (mask >>> 24) & 0xff;
+        int octet2 = (mask >>> 16) & 0xff;
+        int octet3 = (mask >>> 8) & 0xff;
+        int octet4 = mask & 0xff;
+        return String.format("%d.%d.%d.%d", octet1, octet2, octet3, octet4);
+    }
+
+    static class SubnetDevice {
+        int index;
+        String subnetIp;
+        int hostCount;
+        String firstIp;
+        String lastIp;
+
+        public SubnetDevice(int index, String subnetIp, int hostCount, String firstIp, String lastIp) {
+            this.index = index;
+            this.subnetIp = subnetIp;
+            this.hostCount = hostCount;
+            this.firstIp = firstIp;
+            this.lastIp = lastIp;
+        }
+    }
+}
